@@ -2,12 +2,7 @@ use std::io;
 
 use crossterm::{
     execute,
-    terminal::{
-        EnterAlternateScreen,
-        LeaveAlternateScreen,
-        enable_raw_mode,
-        disable_raw_mode,
-    },
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
 pub struct ScreenState;
@@ -26,4 +21,3 @@ impl Drop for ScreenState {
         execute!(io::stdout(), LeaveAlternateScreen).unwrap();
     }
 }
-

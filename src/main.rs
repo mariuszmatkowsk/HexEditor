@@ -1,20 +1,20 @@
-mod terminal_buffer;
 mod screen_state;
+mod terminal_buffer;
 
-use terminal_buffer::TerminalBuffer;
 use screen_state::ScreenState;
+use terminal_buffer::TerminalBuffer;
 
 use std::{
     fs::File,
-    time::Duration,
-    result,
     io::{self, Read},
+    result,
+    time::Duration,
 };
 
 use crossterm::{
-    event::{poll, read, Event, KeyEventKind, KeyCode, KeyModifiers},
-    terminal,
+    event::{poll, read, Event, KeyCode, KeyEventKind, KeyModifiers},
     style::Color,
+    terminal,
 };
 
 type Result<T> = result::Result<T, ()>;
@@ -51,7 +51,7 @@ impl ByteNibble {
     }
 }
 
-#[derive(Default)] 
+#[derive(Default)]
 struct HexEditorLine {
     offset: String,
     hex_data: Vec<ByteNibble>,
@@ -60,7 +60,11 @@ struct HexEditorLine {
 
 impl HexEditorLine {
     fn new(offset: String) -> Self {
-        Self {offset, hex_data: Vec::default(), asci_data: Vec::default()}
+        Self {
+            offset,
+            hex_data: Vec::default(),
+            asci_data: Vec::default(),
+        }
     }
 
     fn put_data(&mut self, byte_data: u8) {
@@ -80,9 +84,8 @@ impl HexEditor {
         let mut line_bytes: Vec<u8> = Vec::with_capacity(BYTES_PER_LINE);
         let mut current_offset = 0x00000000;
         for (i, b) in data.iter().enumerate() {
-            
             if i > 0 && i % BYTES_PER_LINE == 0 {
-                let mut hex_editor_line = HexEditorLine::new(format!("{current_offset:08X}")); 
+                let mut hex_editor_line = HexEditorLine::new(format!("{current_offset:08X}"));
                 for data_byte in line_bytes.iter() {
                     hex_editor_line.put_data(*data_byte);
                 }
@@ -93,7 +96,9 @@ impl HexEditor {
             line_bytes.push(*b);
         }
 
-        Self {lines: hex_editor_lines}
+        Self {
+            lines: hex_editor_lines,
+        }
     }
 
     fn get_lines(&self) -> &Vec<HexEditorLine> {
@@ -145,18 +150,39 @@ fn main() -> Result<()> {
     let hex_editor = HexEditor::new(&data);
 
     for (y, hex_editor_line) in hex_editor.get_lines().iter().enumerate() {
-        assert!(hex_editor_line.hex_data.len() == hex_editor_line.asci_data.len(), "Data is not alignment");
-        buffer.put_cells(0, y, &format!("{offset}:", offset=hex_editor_line.offset), Color::White, Color::Black);
+        assert!(
+            hex_editor_line.hex_data.len() == hex_editor_line.asci_data.len(),
+            "Data is not alignment"
+        );
+        buffer.put_cells(
+            0,
+            y,
+            &format!("{offset}:", offset = hex_editor_line.offset),
+            Color::White,
+            Color::Black,
+        );
 
         let start_hex = 11;
         for (x, byte_nibble) in hex_editor_line.hex_data.iter().enumerate() {
-            buffer.put_cells(start_hex     + x * 3, y, &format!("{value:1X}", value=byte_nibble.left), Color::White, Color::Black);
-            buffer.put_cells(start_hex + 1 + x * 3, y, &format!("{value:1X}", value=byte_nibble.right), Color::White, Color::Black);
+            buffer.put_cells(
+                start_hex + x * 3,
+                y,
+                &format!("{value:1X}", value = byte_nibble.left),
+                Color::White,
+                Color::Black,
+            );
+            buffer.put_cells(
+                start_hex + 1 + x * 3,
+                y,
+                &format!("{value:1X}", value = byte_nibble.right),
+                Color::White,
+                Color::Black,
+            );
         }
 
         let start_asci = 11 + 3 * BYTES_PER_LINE - 1 + 2;
         for (x, asci) in hex_editor_line.asci_data.iter().enumerate() {
-            if {'!'..'~' }.contains(&(*asci as char)) {
+            if { '!'..'~' }.contains(&(*asci as char)) {
                 buffer.put_cell(start_asci + x, y, *asci as char, Color::White, Color::Black);
             } else {
                 buffer.put_cell(start_asci + x, y, '.', Color::White, Color::Black);
@@ -178,21 +204,28 @@ fn main() -> Result<()> {
                         match key_event.code {
                             KeyCode::Char(key) if key_event.modifiers == KeyModifiers::CONTROL => {
                                 match key {
-                                    'c' => {quit = true},
-                                    'h' => {todo!("Handle left move");},
-                                    'l' => {todo!("Handle right move")},
-                                    'j' => {todo!("Handle down move")},
-                                    'k' => {todo!("Handle up move")},
-                                    _ => {},
+                                    'c' => quit = true,
+                                    'h' => {
+                                        todo!("Handle left move");
+                                    }
+                                    'l' => {
+                                        todo!("Handle right move")
+                                    }
+                                    'j' => {
+                                        todo!("Handle down move")
+                                    }
+                                    'k' => {
+                                        todo!("Handle up move")
+                                    }
+                                    _ => {}
                                 }
-                            },
-                            KeyCode::Char(_key) => {},
-                            KeyCode::Enter => {}, 
+                            }
+                            KeyCode::Char(_key) => {}
+                            KeyCode::Enter => {}
                             _ => {}
                         }
                     }
-
-                },
+                }
                 _ => {}
             }
         }
@@ -200,7 +233,6 @@ fn main() -> Result<()> {
         //     eprintln!("Could not flush buffer: {err}");
         // })?;
     }
-    
+
     Ok(())
 }
-
