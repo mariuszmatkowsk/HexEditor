@@ -79,21 +79,30 @@ struct HexEditor {
 
 impl HexEditor {
     fn new(data: &[u8]) -> Self {
+        fn put_line(lines: &mut Vec<HexEditorLine>, offset: &u32, data: &[u8]) {
+            let mut hex_editor_line = HexEditorLine::new(format!("{offset:08X}"));
+            for data_byte in data.iter() {
+                hex_editor_line.put_data(*data_byte);
+            }
+
+            lines.push(hex_editor_line);
+        }
+
         let mut hex_editor_lines = Vec::new();
 
         let mut line_bytes: Vec<u8> = Vec::with_capacity(BYTES_PER_LINE);
         let mut current_offset = 0x00000000;
         for (i, b) in data.iter().enumerate() {
             if i > 0 && i % BYTES_PER_LINE == 0 {
-                let mut hex_editor_line = HexEditorLine::new(format!("{current_offset:08X}"));
-                for data_byte in line_bytes.iter() {
-                    hex_editor_line.put_data(*data_byte);
-                }
-                hex_editor_lines.push(hex_editor_line);
+                put_line(&mut hex_editor_lines, &current_offset, &line_bytes);
                 line_bytes.clear();
                 current_offset += ADDRESS_OFFSET;
             }
             line_bytes.push(*b);
+        }
+
+        if !line_bytes.is_empty() {
+            put_line(&mut hex_editor_lines, &current_offset, &line_bytes);
         }
 
         Self {
