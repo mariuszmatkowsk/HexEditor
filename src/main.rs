@@ -81,6 +81,7 @@ impl HexEditor {
     fn new(data: &[u8]) -> Self {
         fn put_line(lines: &mut Vec<HexEditorLine>, offset: &u32, data: &[u8]) {
             let mut hex_editor_line = HexEditorLine::new(format!("{offset:08X}"));
+
             for data_byte in data.iter() {
                 hex_editor_line.put_data(*data_byte);
             }
@@ -125,39 +126,7 @@ impl HexEditor {
     }
 }
 
-fn main() -> Result<()> {
-    let mut stdout = io::stdout();
-
-    let file_path = match parse_file_path() {
-        Some(file_path) => file_path,
-        None => {
-            print_usage();
-            return Err(());
-        }
-    };
-
-    let mut file = File::open(file_path.clone()).map_err(|err| {
-        eprintln!("Could not open file: {file_path}: {err}");
-    })?;
-
-    let mut data = Vec::new();
-
-    file.read_to_end(&mut data).map_err(|err| {
-        eprintln!("Could not read file into buffer: {err}");
-    })?;
-
-    let _screen_state = ScreenState::enable().map_err(|err| {
-        eprintln!("Could not enter screen state: {err}");
-    })?;
-
-    let (width, height) = terminal::size().map_err(|err| {
-        eprintln!("Culd not get terminal size: {err}");
-    })?;
-
-    let mut buffer = TerminalBuffer::new(width.into(), height.into());
-
-    let hex_editor = HexEditor::new(&data);
-
+fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexEditor) {
     for (y, hex_editor_line) in hex_editor.get_lines().iter().enumerate() {
         assert!(
             hex_editor_line.hex_data.len() == hex_editor_line.asci_data.len(),
@@ -198,6 +167,43 @@ fn main() -> Result<()> {
             }
         }
     }
+}
+
+fn main() -> Result<()> {
+    let mut stdout = io::stdout();
+
+    let file_path = match parse_file_path() {
+        Some(file_path) => file_path,
+        None => {
+            print_usage();
+            return Err(());
+        }
+    };
+
+    let mut file = File::open(file_path.clone()).map_err(|err| {
+        eprintln!("Could not open file: {file_path}: {err}");
+    })?;
+
+    let mut data = Vec::new();
+
+    file.read_to_end(&mut data).map_err(|err| {
+        eprintln!("Could not read file into buffer: {err}");
+    })?;
+
+    let _screen_state = ScreenState::enable().map_err(|err| {
+        eprintln!("Could not enter screen state: {err}");
+    })?;
+
+    let (width, height) = terminal::size().map_err(|err| {
+        eprintln!("Culd not get terminal size: {err}");
+    })?;
+
+    let mut buffer = TerminalBuffer::new(width.into(), height.into());
+
+    let hex_editor = HexEditor::new(&data);
+
+    render_hex_editor(&mut buffer, &hex_editor);
+
 
     buffer.flush(&mut stdout).map_err(|err| {
         eprintln!("Could not flush buffer: {err}");
