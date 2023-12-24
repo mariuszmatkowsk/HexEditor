@@ -73,8 +73,16 @@ impl HexEditorLine {
     }
 }
 
+#[derive(Default)]
+struct Cursor {
+    x: usize,
+    y: usize,
+    is_visible: bool,
+}
+
 struct HexEditor {
     lines: Vec<HexEditorLine>,
+    cursor: Cursor,
 }
 
 impl HexEditor {
@@ -108,6 +116,63 @@ impl HexEditor {
 
         Self {
             lines: hex_editor_lines,
+            cursor: Cursor::default(),
+        }
+    }
+
+    fn move_cursor_left(&mut self) {
+        if !self.cursor.is_visible {
+            self.cursor.is_visible = true;
+            return;
+        }
+
+        if self.cursor.x > 0 {
+            self.cursor.x -= 1;
+        }
+    }
+
+    fn move_cursor_right(&mut self) {
+        if !self.cursor.is_visible {
+            self.cursor.is_visible = true;
+            return;
+        }
+
+        // handle last line, it may be shorter
+        if self.cursor.y == self.lines.len() - 1 {
+            if let Some(last_line) = self.lines.last() {
+                let n_data = last_line.hex_data.len();
+
+                if self.cursor.x < 2 * n_data - 1 {
+                    self.cursor.x += 1;
+                }
+            }
+            return;
+        }
+
+        if self.cursor.x < 2 * BYTES_PER_LINE - 1 {
+            self.cursor.x += 1;
+        }
+    }
+
+    fn move_cursor_up(&mut self) {
+        if !self.cursor.is_visible {
+            self.cursor.is_visible = true;
+            return;
+        }
+
+        if self.cursor.y > 0 {
+            self.cursor.y -= 1;
+        }
+    }
+
+    fn move_cursor_down(&mut self) {
+        if !self.cursor.is_visible {
+            self.cursor.is_visible = true;
+            return;
+        }
+
+        if self.cursor.y < self.lines.len() - 1 {
+            self.cursor.y += 1;
         }
     }
 
@@ -142,19 +207,36 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexEditor) {
 
         let start_hex = 11;
         for (x, byte_nibble) in hex_editor_line.hex_data.iter().enumerate() {
+            let mut left_nibble_fg = Color::White;
+            let mut left_nibble_bg = Color::Black;
+
+            let mut right_nibble_fg = Color::White;
+            let mut right_nibble_bg = Color::Black;
+
+            if hex_editor.cursor.is_visible {
+                if hex_editor.cursor.y == y {
+                    if x * 2 == hex_editor.cursor.x {
+                        left_nibble_fg = Color::Black;
+                        left_nibble_bg = Color::White;
+                    } else if x * 2 + 1 == hex_editor.cursor.x {
+                        right_nibble_fg = Color::Black;
+                        right_nibble_bg = Color::White;
+                    }
+                }
+            }
             buffer.put_cells(
                 start_hex + x * 3,
                 y,
                 &format!("{value:1X}", value = byte_nibble.left),
-                Color::White,
-                Color::Black,
+                left_nibble_fg,
+                left_nibble_bg,
             );
             buffer.put_cells(
                 start_hex + 1 + x * 3,
                 y,
                 &format!("{value:1X}", value = byte_nibble.right),
-                Color::White,
-                Color::Black,
+                right_nibble_fg,
+                right_nibble_bg,
             );
         }
 
@@ -200,10 +282,9 @@ fn main() -> Result<()> {
 
     let mut buffer = TerminalBuffer::new(width.into(), height.into());
 
-    let hex_editor = HexEditor::new(&data);
+    let mut hex_editor = HexEditor::new(&data);
 
     render_hex_editor(&mut buffer, &hex_editor);
-
 
     buffer.flush(&mut stdout).map_err(|err| {
         eprintln!("Could not flush buffer: {err}");
@@ -221,16 +302,16 @@ fn main() -> Result<()> {
                                 match key {
                                     'c' => quit = true,
                                     'h' => {
-                                        todo!("Handle left move");
+                                        hex_editor.move_cursor_left();
                                     }
                                     'l' => {
-                                        todo!("Handle right move")
+                                        hex_editor.move_cursor_right();
                                     }
                                     'j' => {
-                                        todo!("Handle down move")
+                                        hex_editor.move_cursor_down();
                                     }
                                     'k' => {
-                                        todo!("Handle up move")
+                                        hex_editor.move_cursor_up();
                                     }
                                     _ => {}
                                 }
@@ -244,9 +325,11 @@ fn main() -> Result<()> {
                 _ => {}
             }
         }
-        // buffer.flush(&mut stdout).map_err(|err| {
-        //     eprintln!("Could not flush buffer: {err}");
-        // })?;
+        render_hex_editor(&mut buffer, &hex_editor);
+
+        buffer.flush(&mut stdout).map_err(|err| {
+            eprintln!("Could not flush buffer: {err}");
+        })?;
     }
 
     Ok(())
