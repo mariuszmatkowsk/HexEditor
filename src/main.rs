@@ -6,7 +6,7 @@ use terminal_buffer::{apply_patches, TerminalBuffer};
 
 use std::{
     fs::File,
-    io::{self, Read, Write},
+    io::{self, Read, Seek, Write},
     result,
     time::Duration,
 };
@@ -252,9 +252,13 @@ fn main() -> Result<()> {
         }
     };
 
-    let mut file = File::open(file_path.clone()).map_err(|err| {
-        eprintln!("Could not open file: {file_path}: {err}");
-    })?;
+    let mut file = File::options()
+        .write(true)
+        .read(true)
+        .open(file_path.clone())
+        .map_err(|err| {
+            eprintln!("Could not open file: {file_path}: {err}");
+        })?;
 
     let mut data = Vec::new();
 
@@ -321,6 +325,10 @@ fn main() -> Result<()> {
                                 }
                                 'k' => {
                                     hex_view.move_cursor_up();
+                                }
+                                's' => {
+                                    let _ = file.seek(io::SeekFrom::Start(0));
+                                    let _ = file.write_all(&hex_view.get_data_as_bytes());
                                 }
                                 _ => {}
                             },
