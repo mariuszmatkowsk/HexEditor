@@ -13,7 +13,7 @@ pub struct TerminalBuffer {
     h: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Cell {
     ch: char,
     fg: Color,
@@ -28,6 +28,12 @@ impl Default for Cell {
             bg: Color::Black,
         }
     }
+}
+
+pub struct Patch {
+    cell: Cell,
+    x: usize,
+    y: usize,
 }
 
 impl TerminalBuffer {
@@ -86,4 +92,34 @@ impl TerminalBuffer {
 
         Ok(())
     }
+
+    pub fn diff(&self, other: &Self) -> Vec<Patch> {
+        assert!(
+            self.w == other.w && self.h == other.h,
+            "Buffers don't have same dimensions"
+        );
+
+        self.cells
+            .iter()
+            .zip(other.cells.iter())
+            .enumerate()
+            .filter(|(_, (a, b))| *a != *b)
+            .map(|(i, (cell, _))| Patch {
+                cell: cell.clone(),
+                x: i % self.w,
+                y: i / self.w,
+            })
+            .collect()
+    }
+}
+
+pub fn apply_patches(qc: &mut impl QueueableCommand, patches: &[Patch]) -> io::Result<()> {
+    for Patch { cell, x, y } in patches.iter() {
+        qc.queue(MoveTo(*x as u16, *y as u16))?;
+        qc.queue(SetForegroundColor(cell.fg))?;
+        qc.queue(SetBackgroundColor(cell.bg))?;
+        qc.queue(Print(cell.ch))?;
+    }
+
+    Ok(())
 }

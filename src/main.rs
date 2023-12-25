@@ -2,17 +2,18 @@ mod screen_state;
 mod terminal_buffer;
 
 use screen_state::ScreenState;
-use terminal_buffer::TerminalBuffer;
+use terminal_buffer::{apply_patches, TerminalBuffer};
 
 use std::{
     fs::File,
-    io::{self, Read},
+    io::{self, Read, Write},
     result,
     time::Duration,
 };
 
 use crossterm::{
     event::{poll, read, Event, KeyCode, KeyEventKind, KeyModifiers},
+    execute,
     style::Color,
     terminal,
 };
@@ -40,15 +41,11 @@ struct HexViewLine {
 }
 
 impl HexViewLine {
-    fn new(offset: String) -> Self {
+    fn new(offset: String, bytes: &[u8]) -> Self {
         Self {
             offset,
-            bytes: Vec::default(),
+            bytes: bytes.to_vec(),
         }
-    }
-
-    fn put_data(&mut self, byte_data: u8) {
-        self.bytes.push(byte_data);
     }
 }
 
@@ -61,7 +58,12 @@ struct Cursor {
 
 impl Default for Cursor {
     fn default() -> Self {
-        Self {x: 0, y: 0, is_visible: false, is_left_nibble: true}
+        Self {
+            x: 0,
+            y: 0,
+            is_visible: false,
+            is_left_nibble: true,
+        }
     }
 }
 
@@ -72,16 +74,6 @@ struct HexView {
 
 impl HexView {
     fn new(data: &[u8]) -> Self {
-        fn put_line(lines: &mut Vec<HexViewLine>, offset: &usize, data: &[u8]) {
-            let mut hex_view_line = HexViewLine::new(format!("{offset:08X}"));
-
-            for byte_data in data.iter() {
-                hex_view_line.put_data(*byte_data);
-            }
-
-            lines.push(hex_view_line);
-        }
-
         let mut hex_editor_lines = Vec::new();
 
         let mut offset = 0;
@@ -92,7 +84,9 @@ impl HexView {
             } else {
                 line_bytes = &data[offset..(offset + BYTES_PER_LINE)];
             }
-            put_line(&mut hex_editor_lines, &offset, &line_bytes);
+
+            hex_editor_lines.push(HexViewLine::new(format!("{offset:08X}"), &line_bytes));
+
             offset += BYTES_PER_LINE;
         }
 
@@ -101,7 +95,6 @@ impl HexView {
             cursor: Cursor::default(),
         }
     }
-
 
     fn move_cursor_left(&mut self) {
         if !self.cursor.is_visible {
@@ -137,9 +130,8 @@ impl HexView {
             }
 
             self.cursor.is_left_nibble = true;
-            self.cursor.x = std::cmp::min(self.cursor.x + 1, BYTES_PER_LINE-1);
+            self.cursor.x = std::cmp::min(self.cursor.x + 1, BYTES_PER_LINE - 1);
         }
-
     }
 
     fn move_cursor_up(&mut self) {
@@ -196,7 +188,7 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexView) {
             let mut right_nibble_bg = Color::Black;
 
             if hex_editor.cursor.is_visible {
-                if hex_editor.cursor.y == y && hex_editor.cursor.x == x{
+                if hex_editor.cursor.y == y && hex_editor.cursor.x == x {
                     if hex_editor.cursor.is_left_nibble {
                         left_nibble_fg = Color::Black;
                         left_nibble_bg = Color::White;
@@ -225,7 +217,13 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexView) {
         let start_asci = 11 + 3 * BYTES_PER_LINE - 1 + 2;
         for (x, byte_data) in hex_editor_line.bytes.iter().enumerate() {
             if { '!'..'~' }.contains(&(*byte_data as char)) {
-                buffer.put_cell(start_asci + x, y, *byte_data as char, Color::White, Color::Black);
+                buffer.put_cell(
+                    start_asci + x,
+                    y,
+                    *byte_data as char,
+                    Color::White,
+                    Color::Black,
+                );
             } else {
                 buffer.put_cell(start_asci + x, y, '.', Color::White, Color::Black);
             }
@@ -263,12 +261,13 @@ fn main() -> Result<()> {
     })?;
 
     let mut buffer = TerminalBuffer::new(width.into(), height.into());
+    let mut prev_buffer = TerminalBuffer::new(width.into(), height.into());
 
     let mut hex_editor = HexView::new(&data);
 
-    render_hex_editor(&mut buffer, &hex_editor);
+    render_hex_editor(&mut prev_buffer, &hex_editor);
 
-    buffer.flush(&mut stdout).map_err(|err| {
+    prev_buffer.flush(&mut stdout).map_err(|err| {
         eprintln!("Could not flush buffer: {err}");
     })?;
 
@@ -307,11 +306,24 @@ fn main() -> Result<()> {
                 _ => {}
             }
         }
+
+        buffer.clear();
+
         render_hex_editor(&mut buffer, &hex_editor);
 
-        buffer.flush(&mut stdout).map_err(|err| {
-            eprintln!("Could not flush buffer: {err}");
+        let patches = buffer.diff(&prev_buffer);
+
+        apply_patches(&mut stdout, &patches).map_err(|err| {
+            eprintln!("Could not apply patches: {err}");
         })?;
+
+        stdout.flush().map_err(|err| {
+            eprintln!("Could not flush: {err}");
+        })?;
+
+        std::mem::swap(&mut prev_buffer, &mut buffer);
+
+        std::thread::sleep(Duration::from_millis(16));
     }
 
     Ok(())
