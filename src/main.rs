@@ -214,7 +214,7 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexView) {
 
         let start_asci = 11 + 3 * BYTES_PER_LINE - 1 + 2;
         for (x, byte_data) in hex_editor_line.bytes.iter().enumerate() {
-            if { '!'..'~' }.contains(&(*byte_data as char)) {
+            if byte_data.is_ascii_graphic() {
                 buffer.put_cell(
                     start_asci + x,
                     y,
@@ -280,26 +280,25 @@ fn main() -> Result<()> {
                             KeyCode::Char(key) if key_event.modifiers == KeyModifiers::CONTROL => {
                                 match key {
                                     'c' => quit = true,
-                                    _ => {},
-                                }
-                            },
-                            KeyCode::Char(key) => {
-                                match key {
-                                    'h' => {
-                                        hex_editor.move_cursor_left();
-                                    },
-                                    'l' => {
-                                        hex_editor.move_cursor_right();
-                                    },
-                                    'j' => {
-                                        hex_editor.move_cursor_down();
-                                    },
-                                    'k' => {
-                                        hex_editor.move_cursor_up();
-                                    },
-                                    _ => {},
+                                    _ => {}
                                 }
                             }
+                            KeyCode::Char(key) if key.is_digit(16) => {}
+                            KeyCode::Char(key) => match key {
+                                'h' => {
+                                    hex_editor.move_cursor_left();
+                                }
+                                'l' => {
+                                    hex_editor.move_cursor_right();
+                                }
+                                'j' => {
+                                    hex_editor.move_cursor_down();
+                                }
+                                'k' => {
+                                    hex_editor.move_cursor_up();
+                                }
+                                _ => {}
+                            },
                             KeyCode::Enter => {}
                             _ => {}
                         }
