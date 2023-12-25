@@ -72,11 +72,11 @@ struct HexView {
 
 impl HexView {
     fn new(data: &[u8]) -> Self {
-        fn put_line(lines: &mut Vec<HexViewLine>, offset: &u32, data: &[u8]) {
+        fn put_line(lines: &mut Vec<HexViewLine>, offset: &usize, data: &[u8]) {
             let mut hex_view_line = HexViewLine::new(format!("{offset:08X}"));
 
-            for data_byte in data.iter() {
-                hex_view_line.put_data(*data_byte);
+            for byte_data in data.iter() {
+                hex_view_line.put_data(*byte_data);
             }
 
             lines.push(hex_view_line);
@@ -84,19 +84,16 @@ impl HexView {
 
         let mut hex_editor_lines = Vec::new();
 
-        let mut line_bytes: Vec<u8> = Vec::with_capacity(BYTES_PER_LINE);
-        let mut current_offset = 0x00000000;
-        for (i, b) in data.iter().enumerate() {
-            if i > 0 && i % BYTES_PER_LINE == 0 {
-                put_line(&mut hex_editor_lines, &current_offset, &line_bytes);
-                line_bytes.clear();
-                current_offset += ADDRESS_OFFSET;
+        let mut offset = 0;
+        while offset < data.len() {
+            let line_bytes;
+            if offset + BYTES_PER_LINE > data.len() {
+                line_bytes = &data[offset..];
+            } else {
+                line_bytes = &data[offset..(offset + BYTES_PER_LINE)];
             }
-            line_bytes.push(*b);
-        }
-
-        if !line_bytes.is_empty() {
-            put_line(&mut hex_editor_lines, &current_offset, &line_bytes);
+            put_line(&mut hex_editor_lines, &offset, &line_bytes);
+            offset += BYTES_PER_LINE;
         }
 
         Self {
@@ -104,6 +101,7 @@ impl HexView {
             cursor: Cursor::default(),
         }
     }
+
 
     fn move_cursor_left(&mut self) {
         if !self.cursor.is_visible {
