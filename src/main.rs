@@ -33,68 +33,53 @@ fn parse_file_path() -> Option<String> {
     return args.next();
 }
 
-struct ByteNibble {
-    left: u8,
-    right: u8,
-}
-
-impl ByteNibble {
-    fn new(data: u8) -> Self {
-        Self {
-            left: (data >> 4) & 0x0F,
-            right: data & 0x0F,
-        }
-    }
-
-    fn as_byte(&self) -> u8 {
-        self.left << 4 | self.right
-    }
-}
-
 #[derive(Default)]
-struct HexEditorLine {
+struct HexViewLine {
     offset: String,
-    hex_data: Vec<ByteNibble>,
-    asci_data: Vec<u8>,
+    bytes: Vec<u8>,
 }
 
-impl HexEditorLine {
+impl HexViewLine {
     fn new(offset: String) -> Self {
         Self {
             offset,
-            hex_data: Vec::default(),
-            asci_data: Vec::default(),
+            bytes: Vec::default(),
         }
     }
 
     fn put_data(&mut self, byte_data: u8) {
-        self.hex_data.push(ByteNibble::new(byte_data));
-        self.asci_data.push(byte_data);
+        self.bytes.push(byte_data);
     }
 }
 
-#[derive(Default)]
 struct Cursor {
     x: usize,
     y: usize,
     is_visible: bool,
+    is_left_nibble: bool,
 }
 
-struct HexEditor {
-    lines: Vec<HexEditorLine>,
+impl Default for Cursor {
+    fn default() -> Self {
+        Self {x: 0, y: 0, is_visible: false, is_left_nibble: true}
+    }
+}
+
+struct HexView {
+    lines: Vec<HexViewLine>,
     cursor: Cursor,
 }
 
-impl HexEditor {
+impl HexView {
     fn new(data: &[u8]) -> Self {
-        fn put_line(lines: &mut Vec<HexEditorLine>, offset: &u32, data: &[u8]) {
-            let mut hex_editor_line = HexEditorLine::new(format!("{offset:08X}"));
+        fn put_line(lines: &mut Vec<HexViewLine>, offset: &u32, data: &[u8]) {
+            let mut hex_view_line = HexViewLine::new(format!("{offset:08X}"));
 
             for data_byte in data.iter() {
-                hex_editor_line.put_data(*data_byte);
+                hex_view_line.put_data(*data_byte);
             }
 
-            lines.push(hex_editor_line);
+            lines.push(hex_view_line);
         }
 
         let mut hex_editor_lines = Vec::new();
@@ -126,8 +111,17 @@ impl HexEditor {
             return;
         }
 
-        if self.cursor.x > 0 {
-            self.cursor.x -= 1;
+        if !self.cursor.is_left_nibble {
+            self.cursor.is_left_nibble = true;
+        } else {
+            if self.cursor.x == 0 && self.cursor.is_left_nibble {
+                return;
+            }
+
+            self.cursor.is_left_nibble = false;
+            if let Some(_) = self.cursor.x.checked_sub(1) {
+                self.cursor.x -= 1;
+            }
         }
     }
 
@@ -137,21 +131,17 @@ impl HexEditor {
             return;
         }
 
-        // handle last line, it may be shorter
-        if self.cursor.y == self.lines.len() - 1 {
-            if let Some(last_line) = self.lines.last() {
-                let n_data = last_line.hex_data.len();
-
-                if self.cursor.x < 2 * n_data - 1 {
-                    self.cursor.x += 1;
-                }
+        if self.cursor.is_left_nibble {
+            self.cursor.is_left_nibble = false;
+        } else {
+            if self.cursor.x == (BYTES_PER_LINE - 1) && !self.cursor.is_left_nibble {
+                return;
             }
-            return;
+
+            self.cursor.is_left_nibble = true;
+            self.cursor.x = std::cmp::min(self.cursor.x + 1, BYTES_PER_LINE-1);
         }
 
-        if self.cursor.x < 2 * BYTES_PER_LINE - 1 {
-            self.cursor.x += 1;
-        }
     }
 
     fn move_cursor_up(&mut self) {
@@ -160,7 +150,7 @@ impl HexEditor {
             return;
         }
 
-        if self.cursor.y > 0 {
+        if let Some(_) = self.cursor.y.checked_sub(1) {
             self.cursor.y -= 1;
         }
     }
@@ -171,32 +161,26 @@ impl HexEditor {
             return;
         }
 
-        if self.cursor.y < self.lines.len() - 1 {
-            self.cursor.y += 1;
-        }
+        self.cursor.y = std::cmp::min(self.cursor.y + 1, self.lines.len() - 1);
     }
 
-    fn get_lines(&self) -> &Vec<HexEditorLine> {
+    fn get_lines(&self) -> &Vec<HexViewLine> {
         &self.lines
     }
 
     fn get_data_as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         for line in self.lines.iter() {
-            for byte_nibble in line.hex_data.iter() {
-                bytes.push(byte_nibble.as_byte());
+            for byte_data in line.bytes.iter() {
+                bytes.push(*byte_data);
             }
         }
         bytes
     }
 }
 
-fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexEditor) {
+fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexView) {
     for (y, hex_editor_line) in hex_editor.get_lines().iter().enumerate() {
-        assert!(
-            hex_editor_line.hex_data.len() == hex_editor_line.asci_data.len(),
-            "Data is not alignment"
-        );
         buffer.put_cells(
             0,
             y,
@@ -206,7 +190,7 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexEditor) {
         );
 
         let start_hex = 11;
-        for (x, byte_nibble) in hex_editor_line.hex_data.iter().enumerate() {
+        for (x, byte_data) in hex_editor_line.bytes.iter().enumerate() {
             let mut left_nibble_fg = Color::White;
             let mut left_nibble_bg = Color::Black;
 
@@ -214,11 +198,11 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexEditor) {
             let mut right_nibble_bg = Color::Black;
 
             if hex_editor.cursor.is_visible {
-                if hex_editor.cursor.y == y {
-                    if x * 2 == hex_editor.cursor.x {
+                if hex_editor.cursor.y == y && hex_editor.cursor.x == x{
+                    if hex_editor.cursor.is_left_nibble {
                         left_nibble_fg = Color::Black;
                         left_nibble_bg = Color::White;
-                    } else if x * 2 + 1 == hex_editor.cursor.x {
+                    } else {
                         right_nibble_fg = Color::Black;
                         right_nibble_bg = Color::White;
                     }
@@ -227,23 +211,23 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexEditor) {
             buffer.put_cells(
                 start_hex + x * 3,
                 y,
-                &format!("{value:1X}", value = byte_nibble.left),
+                &format!("{value:1X}", value = (byte_data >> 4) & 0xf),
                 left_nibble_fg,
                 left_nibble_bg,
             );
             buffer.put_cells(
                 start_hex + 1 + x * 3,
                 y,
-                &format!("{value:1X}", value = byte_nibble.right),
+                &format!("{value:1X}", value = byte_data & 0xf),
                 right_nibble_fg,
                 right_nibble_bg,
             );
         }
 
         let start_asci = 11 + 3 * BYTES_PER_LINE - 1 + 2;
-        for (x, asci) in hex_editor_line.asci_data.iter().enumerate() {
-            if { '!'..'~' }.contains(&(*asci as char)) {
-                buffer.put_cell(start_asci + x, y, *asci as char, Color::White, Color::Black);
+        for (x, byte_data) in hex_editor_line.bytes.iter().enumerate() {
+            if { '!'..'~' }.contains(&(*byte_data as char)) {
+                buffer.put_cell(start_asci + x, y, *byte_data as char, Color::White, Color::Black);
             } else {
                 buffer.put_cell(start_asci + x, y, '.', Color::White, Color::Black);
             }
@@ -282,7 +266,7 @@ fn main() -> Result<()> {
 
     let mut buffer = TerminalBuffer::new(width.into(), height.into());
 
-    let mut hex_editor = HexEditor::new(&data);
+    let mut hex_editor = HexView::new(&data);
 
     render_hex_editor(&mut buffer, &hex_editor);
 
