@@ -13,7 +13,6 @@ use std::{
 
 use crossterm::{
     event::{poll, read, Event, KeyCode, KeyEventKind, KeyModifiers},
-    execute,
     style::Color,
     terminal,
 };
@@ -21,7 +20,6 @@ use crossterm::{
 type Result<T> = result::Result<T, ()>;
 
 const BYTES_PER_LINE: usize = 16;
-const ADDRESS_OFFSET: u32 = 0x10;
 
 fn print_usage() {
     println!("Usage: hex_editor <file_path>");
@@ -282,22 +280,26 @@ fn main() -> Result<()> {
                             KeyCode::Char(key) if key_event.modifiers == KeyModifiers::CONTROL => {
                                 match key {
                                     'c' => quit = true,
+                                    _ => {},
+                                }
+                            },
+                            KeyCode::Char(key) => {
+                                match key {
                                     'h' => {
                                         hex_editor.move_cursor_left();
-                                    }
+                                    },
                                     'l' => {
                                         hex_editor.move_cursor_right();
-                                    }
+                                    },
                                     'j' => {
                                         hex_editor.move_cursor_down();
-                                    }
+                                    },
                                     'k' => {
                                         hex_editor.move_cursor_up();
-                                    }
-                                    _ => {}
+                                    },
+                                    _ => {},
                                 }
                             }
-                            KeyCode::Char(_key) => {}
                             KeyCode::Enter => {}
                             _ => {}
                         }
