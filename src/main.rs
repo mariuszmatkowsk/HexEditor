@@ -22,7 +22,7 @@ type Result<T> = result::Result<T, ()>;
 const BYTES_PER_LINE: usize = 16;
 
 fn print_usage() {
-    println!("Usage: hex_editor <file_path>");
+    println!("Usage: hex_editor <file path>");
 }
 
 fn parse_file_path() -> Option<String> {
@@ -92,6 +92,18 @@ impl HexView {
             lines: hex_editor_lines,
             cursor: Cursor::default(),
         }
+    }
+
+    fn get_selected_byte(&mut self) -> Option<&mut u8> {
+        let x = self.cursor.x;
+        let y = self.cursor.y;
+
+        if let Some(line) = self.lines.get_mut(y) {
+            if let Some(data_byte) = line.bytes.get_mut(x) {
+                return Some(data_byte);
+            }
+        }
+        None
     }
 
     fn move_cursor_left(&mut self) {
@@ -261,9 +273,9 @@ fn main() -> Result<()> {
     let mut buffer = TerminalBuffer::new(width.into(), height.into());
     let mut prev_buffer = TerminalBuffer::new(width.into(), height.into());
 
-    let mut hex_editor = HexView::new(&data);
+    let mut hex_view = HexView::new(&data);
 
-    render_hex_editor(&mut prev_buffer, &hex_editor);
+    render_hex_editor(&mut prev_buffer, &hex_view);
 
     prev_buffer.flush(&mut stdout).map_err(|err| {
         eprintln!("Could not flush buffer: {err}");
@@ -283,19 +295,32 @@ fn main() -> Result<()> {
                                     _ => {}
                                 }
                             }
-                            KeyCode::Char(key) if key.is_digit(16) => {}
+                            KeyCode::Char(key) if key.is_digit(16) => {
+                                if hex_view.cursor.is_visible {
+                                    let left_nibble = hex_view.cursor.is_left_nibble;
+                                    if let Some(byte_under_cursor) = hex_view.get_selected_byte() {
+                                        if left_nibble {
+                                            *byte_under_cursor = *byte_under_cursor & 0xF
+                                                | (key.to_digit(16).unwrap() as u8) << 4;
+                                        } else {
+                                            *byte_under_cursor = *byte_under_cursor & 0xF0
+                                                | key.to_digit(16).unwrap() as u8 & 0xF
+                                        }
+                                    }
+                                }
+                            }
                             KeyCode::Char(key) => match key {
                                 'h' => {
-                                    hex_editor.move_cursor_left();
+                                    hex_view.move_cursor_left();
                                 }
                                 'l' => {
-                                    hex_editor.move_cursor_right();
+                                    hex_view.move_cursor_right();
                                 }
                                 'j' => {
-                                    hex_editor.move_cursor_down();
+                                    hex_view.move_cursor_down();
                                 }
                                 'k' => {
-                                    hex_editor.move_cursor_up();
+                                    hex_view.move_cursor_up();
                                 }
                                 _ => {}
                             },
@@ -310,7 +335,7 @@ fn main() -> Result<()> {
 
         buffer.clear();
 
-        render_hex_editor(&mut buffer, &hex_editor);
+        render_hex_editor(&mut buffer, &hex_view);
 
         let patches = buffer.diff(&prev_buffer);
 
