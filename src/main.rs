@@ -179,11 +179,16 @@ impl HexView {
     }
 }
 
-fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexView) {
+fn render_hex_editor(
+    buffer: &mut TerminalBuffer,
+    hex_editor: &HexView,
+    x_start: usize,
+    y_start: usize,
+) {
     for (y, hex_editor_line) in hex_editor.get_lines().iter().enumerate() {
         buffer.put_cells(
-            0,
-            y,
+            x_start,
+            y + y_start,
             &format!("{offset}:", offset = hex_editor_line.offset),
             Color::White,
             Color::Black,
@@ -209,15 +214,15 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexView) {
                 }
             }
             buffer.put_cells(
-                start_hex + x * 3,
-                y,
+                x_start + start_hex + x * 3,
+                y + y_start,
                 &format!("{value:1X}", value = (byte_data >> 4) & 0xf),
                 left_nibble_fg,
                 left_nibble_bg,
             );
             buffer.put_cells(
-                start_hex + 1 + x * 3,
-                y,
+                x_start + start_hex + 1 + x * 3,
+                y + y_start,
                 &format!("{value:1X}", value = byte_data & 0xf),
                 right_nibble_fg,
                 right_nibble_bg,
@@ -228,16 +233,39 @@ fn render_hex_editor(buffer: &mut TerminalBuffer, hex_editor: &HexView) {
         for (x, byte_data) in hex_editor_line.bytes.iter().enumerate() {
             if byte_data.is_ascii_graphic() {
                 buffer.put_cell(
-                    start_asci + x,
-                    y,
+                    x_start + start_asci + x,
+                    y + y_start,
                     *byte_data as char,
                     Color::White,
                     Color::Black,
                 );
             } else {
-                buffer.put_cell(start_asci + x, y, '.', Color::White, Color::Black);
+                buffer.put_cell(
+                    x_start + start_asci + x,
+                    y + y_start,
+                    '.',
+                    Color::White,
+                    Color::Black,
+                );
             }
         }
+    }
+}
+
+fn status_bar(
+    buffer: &mut TerminalBuffer,
+    label: &str,
+    x: usize,
+    y: usize,
+    w: usize,
+    fg: Color,
+    bg: Color,
+) {
+    let n = label.len();
+    buffer.put_cells(x, y, label, fg, bg);
+
+    for x_pos in n..w {
+        buffer.put_cell(x_pos, y, ' ', fg, bg)
     }
 }
 
@@ -279,7 +307,11 @@ fn main() -> Result<()> {
 
     let mut hex_view = HexView::new(&data);
 
-    render_hex_editor(&mut prev_buffer, &hex_view);
+    let mut status_label = String::default();
+
+    status_bar(&mut prev_buffer, "HexEditor", 0, 0, width.into(), Color::Black, Color::White);
+    render_hex_editor(&mut prev_buffer, &hex_view, 0, 1);
+    status_bar(&mut prev_buffer, &status_label, 0, height as usize - 1, width.into(), Color::Black, Color::White);
 
     prev_buffer.flush(&mut stdout).map_err(|err| {
         eprintln!("Could not flush buffer: {err}");
@@ -316,19 +348,30 @@ fn main() -> Result<()> {
                             KeyCode::Char(key) => match key {
                                 'h' => {
                                     hex_view.move_cursor_left();
+                                    status_label.clear();
                                 }
                                 'l' => {
                                     hex_view.move_cursor_right();
+                                    status_label.clear();
                                 }
                                 'j' => {
                                     hex_view.move_cursor_down();
+                                    status_label.clear();
                                 }
                                 'k' => {
                                     hex_view.move_cursor_up();
+                                    status_label.clear();
                                 }
                                 's' => {
                                     let _ = file.seek(io::SeekFrom::Start(0));
-                                    let _ = file.write_all(&hex_view.get_data_as_bytes());
+                                    match file.write_all(&hex_view.get_data_as_bytes()) {
+                                        Ok(_) => {
+                                            status_label = "File was saved...".to_string();
+                                        }
+                                        Err(_) => {
+                                            status_label = "Could not save file...".to_string()
+                                        }
+                                    }
                                 }
                                 _ => {}
                             },
@@ -343,7 +386,19 @@ fn main() -> Result<()> {
 
         buffer.clear();
 
-        render_hex_editor(&mut buffer, &hex_view);
+        status_bar(
+            &mut buffer,
+            "HexEditor",
+            0,
+            0,
+            width.into(),
+            Color::Black,
+            Color::White,
+        );
+
+        render_hex_editor(&mut buffer, &hex_view, 0, 1);
+
+        status_bar(&mut buffer, &status_label, 0, height as usize - 1, width.into(), Color::Black, Color::White);
 
         let patches = buffer.diff(&prev_buffer);
 
